@@ -45,5 +45,5 @@ This project explores how auditory and textual linguistic streams are represente
 ## Dataset
 
 - **OpenNeuro Dataset**: [ds003643](https://openneuro.org/datasets/ds003643) — Functional MRI narrative processing in native Chinese speakers listening to *Le Petit Prince*.
-- Audio features: 128-band Mel-spectrograms extracted with Librosa.
+- Audio features: 1024-dimensional acoustic representations extracted from continuous speech audio using Torchaudio and OpenAI Whisper (`openai/whisper-medium`).
 - Text features: Pre-trained Chinese BERT embeddings aligned with TextGrid word-level phonetic boundary annotations.
