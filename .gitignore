@@ -1,0 +1,18 @@
+# Data and Large Files
+*.csv
+*.tsv
+*.nii
+*.nii.gz
+*.zip
+*.tar.gz
+*.bin
+*.pt
+*.pth
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.env
+venv/

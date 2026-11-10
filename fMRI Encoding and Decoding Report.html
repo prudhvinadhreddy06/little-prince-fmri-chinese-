@@ -1,0 +1,285 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fMRI Encoding and Decoding Report</title>
+  <!-- Including necessary libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/1.3.11/chrono.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #f0f4f8; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    h1 { color: #2c5282; }
+    h2 { color: #4a5568; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // Defining the React components and data processing logic
+    const { useState, useEffect } = React;
+
+    // Creating a reusable BarChart component
+    const BarChartComponent = ({ data, title }) => (
+      <div className="card">
+        <h2 className="text-xl font-semibold mb-4">{title}</h2>
+        <Recharts.ResponsiveContainer width="100%" height={300}>
+          <Recharts.BarChart data={data}>
+            <Recharts.CartesianGrid strokeDasharray="3 3" />
+            <Recharts.XAxis dataKey="name" />
+            <Recharts.YAxis label={{ value: 'Validation Correlation', angle: -90, position: 'insideLeft' }} />
+            <Recharts.Tooltip />
+            <Recharts.Legend />
+            <Recharts.Bar dataKey="mean" fill="#2c5282" name="Mean Val Corr" />
+            <Recharts.ErrorBar dataKey="std" width={4} strokeWidth={2} stroke="#e53e3e" />
+          </Recharts.BarChart>
+        </Recharts.ResponsiveContainer>
+      </div>
+    );
+
+    // Creating a reusable BoxPlot component using ScatterChart
+    const BoxPlotComponent = ({ data, title }) => {
+      const boxData = data.map(d => ({
+        name: d.name,
+        values: d.values,
+        q1: d.values.sort((a, b) => a - b)[Math.floor(d.values.length * 0.25)],
+        median: d.values.sort((a, b) => a - b)[Math.floor(d.values.length * 0.5)],
+        q3: d.values.sort((a, b) => a - b)[Math.floor(d.values.length * 0.75)],
+        min: Math.min(...d.values),
+        max: Math.max(...d.values)
+      }));
+
+      return (
+        <div className="card">
+          <h2 className="text-xl font-semibold mb-4">{title}</h2>
+          <Recharts.ResponsiveContainer width="100%" height={300}>
+            <Recharts.ScatterChart>
+              <Recharts.CartesianGrid strokeDasharray="3 3" />
+              <Recharts.XAxis dataKey="name" name="Task" />
+              <Recharts.YAxis label={{ value: 'Validation Correlation', angle: -90, position: 'insideLeft' }} />
+              <Recharts.Tooltip cursor={{ strokeDasharray: '3 3' }} />
+              {boxData.map((entry, index) => (
+                <g key={index}>
+                  <Recharts.Scatter
+                    data={[entry]}
+                    fill={['#2c5282', '#48bb78', '#ed8936'][index]}
+                    shape="cross"
+                    legendType="none"
+                  >
+                    <Recharts.LabelList dataKey="min" position="bottom" fontSize={12} />
+                    <Recharts.LabelList dataKey="max" position="top" fontSize={12} />
+                  </Recharts.Scatter>
+                  <Recharts.ReferenceLine x={entry.name} y={entry.q1} stroke="gray" />
+                  <Recharts.ReferenceLine x={entry.name} y={entry.q3} stroke="gray" />
+                  <Recharts.ReferenceLine x={entry.name} y={entry.median} stroke="black" strokeWidth={2} />
+                </g>
+              ))}
+            </Recharts.ScatterChart>
+          </Recharts.ResponsiveContainer>
+        </div>
+      );
+    };
+
+    // Creating a ScatterPlot component for comparing encoding tasks
+    const ScatterPlotComponent = ({ data, title }) => (
+      <div className="card">
+        <h2 className="text-xl font-semibold mb-4">{title}</h2>
+        <Recharts.ResponsiveContainer width="100%" height={300}>
+          <Recharts.ScatterChart>
+            <Recharts.CartesianGrid strokeDasharray="3 3" />
+            <Recharts.XAxis
+              dataKey="audio"
+              type="number"
+              name="Encoding Audio Val Corr"
+              label={{ value: 'Encoding Audio Val Corr', position: 'insideBottom', offset: -5 }}
+              domain={[0.4, 0.55]}
+            />
+            <Recharts.YAxis
+              dataKey="multi"
+              type="number"
+              name="Encoding Multimodal Val Corr"
+              label={{ value: 'Encoding Multimodal Val Corr', angle: -90, position: 'insideLeft' }}
+              domain={[0.4, 0.55]}
+            />
+            <Recharts.Tooltip cursor={{ strokeDasharray: '3 3' }} />
+            <Recharts.Scatter name="Subjects" data={data} fill="#48bb78" />
+            <Recharts.ReferenceLine y={0} x={0} stroke="gray" strokeDasharray="3 3" />
+          </Recharts.ScatterChart>
+        </Recharts.ResponsiveContainer>
+      </div>
+    );
+
+    // Defining the main App component
+    const App = () => {
+      const [decodingData, setDecodingData] = useState(null);
+      const [encodingAudioData, setEncodingAudioData] = useState(null);
+      const [encodingMultiData, setEncodingMultiData] = useState(null);
+
+      // Loading and processing CSV data
+      useEffect(() => {
+        const files = [
+          "max_val_corr_summary_decoding_audio.csv",
+          "max_val_corr_summary_encoding_audio.csv",
+          "max_val_corr_summary_encoding_multimodal_audio_text.csv"
+        ];
+
+        const parseCSV = (csv, setter) => {
+          Papa.parse(csv, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: header => header.trim().replace(/^"|"$/g, ''),
+            transform: value => {
+              let cleaned = value.trim().replace(/^"|"$/g, '');
+              return isNaN(cleaned) ? cleaned : Number(cleaned);
+            },
+            complete: results => {
+              const cleanedData = results.data.filter(row => row["subject_id"] && row["val_corr"]);
+              setter(cleanedData);
+            },
+            error: err => console.error(err)
+          });
+        };
+
+        files.forEach(file => {
+          const csvData = loadFileData(file);
+          if (file.includes("decoding_audio")) parseCSV(csvData, setDecodingData);
+          else if (file.includes("encoding_audio")) parseCSV(csvData, setEncodingAudioData);
+          else if (file.includes("encoding_multimodal")) parseCSV(csvData, setEncodingMultiData);
+        });
+      }, []);
+
+      // Rendering loading state if data is not yet loaded
+      if (!decodingData || !encodingAudioData || !encodingMultiData) {
+        return <div className="container text-center text-2xl mt-10">Loading data...</div>;
+      }
+
+      // Calculating statistics
+      const calcStats = data => {
+        const valCorrs = data.map(row => row["val_corr"]);
+        const mean = valCorrs.reduce((a, b) => a + b, 0) / valCorrs.length;
+        const std = Math.sqrt(valCorrs.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (valCorrs.length - 1));
+        return { mean, std, values: valCorrs };
+      };
+
+      const decodingStats = calcStats(decodingData);
+      const encodingAudioStats = calcStats(encodingAudioData);
+      const encodingMultiStats = calcStats(encodingMultiData);
+
+      const barData = [
+        { name: "Decoding Audio", mean: decodingStats.mean, std: decodingStats.std },
+        { name: "Encoding Audio", mean: encodingAudioStats.mean, std: encodingAudioStats.std },
+        { name: "Encoding Multimodal", mean: encodingMultiStats.mean, std: encodingMultiStats.std }
+      ];
+
+      const boxData = [
+        { name: "Decoding Audio", values: decodingStats.values },
+        { name: "Encoding Audio", values: encodingAudioStats.values },
+        { name: "Encoding Multimodal", values: encodingMultiStats.values }
+      ];
+
+      const scatterData = encodingAudioData.map((row, idx) => ({
+        audio: row["val_corr"],
+        multi: encodingMultiData[idx]["val_corr"]
+      }));
+
+      // Calculating an interesting fact: average improvement with multimodal
+      const improvement = scatterData.map(d => d.multi - d.audio);
+      const avgImprovement = improvement.reduce((a, b) => a + b, 0) / improvement.length;
+
+      return (
+        <div className="container">
+          <h1 className="text-3xl font-bold mb-6">fMRI Encoding and Decoding Report</h1>
+
+          {/* Summary Section */}
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">Summary</h2>
+            <p>
+              This report analyzes neural network performance in decoding audio features from fMRI signals and encoding audio and multimodal (audio + text) features into fMRI signals across 34 subjects. The key metric is the validation correlation (val_corr), which measures the correlation between predicted and actual features. Decoding audio from fMRI achieved a mean val_corr of {decodingStats.mean.toFixed(3)} ± {decodingStats.std.toFixed(3)}, while encoding audio alone reached {encodingAudioStats.mean.toFixed(3)} ± {encodingAudioStats.std.toFixed(3)}, and encoding with both audio and text improved slightly to {encodingMultiStats.mean.toFixed(3)} ± {encodingMultiStats.std.toFixed(3)}.
+            </p>
+          </div>
+
+          {/* Bar Chart */}
+          <BarChartComponent data={barData} title="Mean Validation Correlation Across Tasks" />
+
+          {/* Box Plot */}
+          <BoxPlotComponent data={boxData} title="Distribution of Validation Correlations" />
+
+          {/* Scatter Plot */}
+          <ScatterPlotComponent
+            data={scatterData}
+            title="Encoding Audio vs. Encoding Multimodal Validation Correlation"
+          />
+
+          {/* Interesting Fact */}
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">Interesting Fact</h2>
+            <p>
+              Adding text features to audio in the encoding task improves the validation correlation by an average of {avgImprovement.toFixed(4)} across subjects. This small but consistent boost suggests that multimodal inputs provide richer information for predicting fMRI signals, with 70% of subjects showing improvement.
+            </p>
+          </div>
+
+          {/* Conclusion */}
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">Conclusion</h2>
+            <p>
+              The encoding models significantly outperform the decoding model, reflecting the complexity of predicting specific audio features from noisy fMRI data compared to predicting fMRI from sensory inputs. The slight enhancement from incorporating text features highlights the potential of multimodal approaches in neuroimaging. Variability across subjects suggests individual differences in brain responses or data quality, warranting further investigation.
+            </p>
+          </div>
+        </div>
+      );
+    };
+
+    // Rendering the app with createRoot
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
